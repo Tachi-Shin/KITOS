@@ -13,6 +13,27 @@
 static uint64_t timer_interval_cycles;
 static uint64_t next_deadline;
 
+uint64_t arch_timer_get_ms(void)
+{
+    uint64_t frequency = ReadSysReg(CNTFRQ_EL0);
+
+    __asm__ volatile(
+        "isb"
+        :::
+        "memory"
+    );
+
+    uint64_t count = ReadSysReg(CNTPCT_EL0);
+
+    /*
+     * count * 1000を先に計算すると、
+     * 長時間稼働時にオーバーフローするため分割する。
+     */
+    return
+        (count / frequency) * 1000ULL +
+        ((count % frequency) * 1000ULL) / frequency;
+}
+
 static uint64_t milliseconds_to_cycles(uint32_t milliseconds)
 {
     uint64_t frequency = ReadSysReg(CNTFRQ_EL0);
@@ -41,7 +62,11 @@ void arch_timer_start(uint32_t irq)
     WriteSysReg(CNTP_CVAL_EL0, next_deadline);
     WriteSysReg(CNTP_CTL_EL0, CNTP_CTL_ENABLE);
 
-    __asm__ volatile("isb" ::: "memory");
+    __asm__ volatile(
+        "isb"
+        :::
+        "memory"
+    );
 
     printk(
         "[timer] frequency=%llu Hz interval=%llu cycles\n",
@@ -66,7 +91,11 @@ bool arch_timer_handler(void)
 
     WriteSysReg(CNTP_CVAL_EL0, next_deadline);
 
-    __asm__ volatile("isb" ::: "memory");
+    __asm__ volatile(
+        "isb"
+        :::
+        "memory"
+    );
 
     return kernel_timer_tick();
 }

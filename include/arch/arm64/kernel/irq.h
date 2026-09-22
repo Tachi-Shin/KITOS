@@ -26,10 +26,27 @@ static inline uint64_t arch_irq_save(void)
 static inline void arch_irq_restore(uint64_t flags)
 {
     if ((flags & (1ULL << 7)) != 0U) {
-        __asm__ volatile("msr daifset, #2" ::: "memory");
+        __asm__ volatile(
+            "msr daifset, #2"
+            :::
+            "memory"
+        );
     } else {
-        __asm__ volatile("msr daifclr, #2" ::: "memory");
+        __asm__ volatile(
+            "msr daifclr, #2"
+            :::
+            "memory"
+        );
     }
+}
+
+static inline void arch_wait_for_irq(void)
+{
+    __asm__ volatile(
+        "wfi"
+        :::
+        "memory"
+    );
 }
 
 #endif

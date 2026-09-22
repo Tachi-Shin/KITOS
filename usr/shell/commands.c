@@ -4,6 +4,7 @@
 #include <kernel/printk.h>
 
 #include <usr/apps.h>
+
 #include <drivers/uart/uart.h>
 
 #define ARG_COUNT 8U
@@ -56,6 +57,42 @@ static bool parse_id(const char *text, uint32_t *out)
     }
 
     *out = value;
+
+    return true;
+}
+
+/*
+ * sleep 3      : 3秒
+ * sleep 3s     : 3秒
+ * sleep 500ms  : 500ミリ秒
+ * sleep 0      : yield
+ */
+static bool parse_sleep_ms(
+    const char *text,
+    uint32_t *milliseconds
+)
+{
+    const char *p = text;
+    uint32_t value;
+
+    if (!app_uint(&p, &value, 0xFFFFFFFFU)) {
+        return false;
+    }
+
+    if (equal(p, "ms")) {
+        *milliseconds = value;
+        return true;
+    }
+
+    if (
+        (!equal(p, "") && !equal(p, "s")) ||
+        value > 0xFFFFFFFFU / 1000U
+    ) {
+        return false;
+    }
+
+    *milliseconds = value * 1000U;
+
     return true;
 }
 
@@ -70,6 +107,9 @@ static const char *state_name(uint32_t state)
 
     case TASK_BLOCKED:
         return "BLOCKED";
+
+    case TASK_SLEEPING:
+        return "SLEEPING";
 
     case TASK_STOPPED:
         return "STOPPED";
@@ -104,6 +144,20 @@ static void show_tasks(void)
             (unsigned long long)t->work,
             color_names[t->color]
         );
+
+        /*
+         * stack_topは領域の直後。
+         * 表示するSIZEは確保容量であり、現在の使用量ではない。
+         */
+        printk(
+            "  STACK [%p, %p) SIZE=%lu bytes\n",
+            t->stack_bottom,
+            t->stack_top,
+            (unsigned long)(
+                (uintptr_t)t->stack_top -
+                (uintptr_t)t->stack_bottom
+            )
+        );
     }
 
     shell_color(0U);
@@ -127,26 +181,60 @@ static void show_uart(void)
     );
 }
 
+/*
+ * psからSLEEPING状態を観察するためのデモ。
+ */
+static void sleep_demo_task(void *argument)
+{
+    const char *message = argument;
+
+    for (;;) {
+        if (task_sleep_ms(1000U) != 0) {
+            return;
+        }
+
+        task_work();
+
+        (void)task_log(message);
+    }
+}
+
 static void run_app(const char *name)
 {
     static const struct {
         const char *name;
         const char *message;
+        void (*entry)(void *);
     } apps[] = {
-        { "demo_a", "demo_a is running" },
-        { "demo_b", "demo_b is running" },
+        {
+            "demo_a",
+            "demo_a is running",
+            demo_task
+        },
+        {
+            "demo_b",
+            "demo_b is running",
+            demo_task
+        },
+        {
+            "demo_sleep",
+            "demo_sleep woke up",
+            sleep_demo_task
+        }
     };
 
-    for (unsigned int i = 0U;
-         i < sizeof(apps) / sizeof(apps[0]);
-         i++) {
+    for (
+        unsigned int i = 0U;
+        i < sizeof(apps) / sizeof(apps[0]);
+        i++
+    ) {
         if (!equal(name, apps[i].name)) {
             continue;
         }
 
         int id = task_create(
             apps[i].name,
-            demo_task,
+            apps[i].entry,
             (void *)apps[i].message
         );
 
@@ -166,7 +254,7 @@ static void run_app(const char *name)
     }
 
     printk(
-        "Unknown application. Available: demo_a demo_b\n"
+        "Unknown application. Available: demo_a demo_b demo_sleep\n"
     );
 }
 
@@ -180,7 +268,7 @@ void shell_execute(char *line)
         return;
     }
 
-    /* 空白・タブで引数を分割する */
+    /* 空白・タブで引数を分割する。 */
     while (*p != '\0') {
         while (*p == ' ' || *p == '\t') {
             p++;
@@ -197,9 +285,7 @@ void shell_execute(char *line)
 
         argv[argc++] = p;
 
-        while (*p != '\0' &&
-               *p != ' ' &&
-               *p != '\t') {
+        while (*p != '\0' && *p != ' ' && *p != '\t') {
             p++;
         }
 
@@ -214,13 +300,10 @@ void shell_execute(char *line)
 
     if (equal(argv[0], "help") && argc == 1U) {
         printk("help | echo TEXT | clear | ps | uart\n");
-        printk("run demo_a|demo_b\n");
-        printk(
-            "stop ID | resume ID | kill ID | color ID COLOR\n"
-        );
-        printk(
-            "Colors: default red green yellow blue magenta cyan white\n"
-        );
+        printk("sleep ID N[s|ms] (positive integer; default: seconds)\n");
+        printk("run demo_a|demo_b|demo_sleep\n");
+        printk("stop ID | resume ID | kill ID | color ID COLOR\n");
+        printk("Colors: default red green yellow blue magenta cyan white\n");
 
     } else if (equal(argv[0], "echo")) {
         for (unsigned int i = 1U; i < argc; i++) {
@@ -238,6 +321,29 @@ void shell_execute(char *line)
 
     } else if (equal(argv[0], "ps") && argc == 1U) {
         show_tasks();
+
+    } else if (equal(argv[0], "sleep")) {
+        uint32_t id;
+        uint32_t milliseconds;
+
+        if (argc != 3U ||
+            !parse_id(argv[1], &id) ||
+            !parse_sleep_ms(argv[2], &milliseconds) ||
+            milliseconds == 0U) {
+            printk(
+                "Usage: sleep ID N[s|ms] "
+                "(positive integer; default: seconds)\n"
+            );
+            return;
+        }
+
+        if (task_sleep(id, milliseconds) == 0) {
+            printk("OK: sleep %u %ums\n", id, milliseconds);
+        } else {
+            printk(
+                "Cannot sleep: missing/protected task or invalid state.\n"
+            );
+        }
 
     } else if (equal(argv[0], "uart") && argc == 1U) {
         show_uart();
@@ -261,11 +367,7 @@ void shell_execute(char *line)
             TASK_KILL;
 
         if (task_control(id, operation) == 0) {
-            printk(
-                "OK: %s %u\n",
-                argv[0],
-                id
-            );
+            printk("OK: %s %u\n", argv[0], id);
         } else {
             printk(
                 "Cannot %s: missing/protected task or invalid state.\n",
@@ -289,11 +391,7 @@ void shell_execute(char *line)
             }
 
             if (task_set_color(id, color) == 0) {
-                printk(
-                    "OK: color %u %s\n",
-                    id,
-                    argv[2]
-                );
+                printk("OK: color %u %s\n", id, argv[2]);
             } else {
                 printk("No live task with that ID.\n");
             }
@@ -304,8 +402,6 @@ void shell_execute(char *line)
         printk("Unknown color. See help.\n");
 
     } else {
-        printk(
-            "Unknown command or wrong arguments. See help.\n"
-        );
+        printk("Unknown command or wrong arguments. See help.\n");
     }
 }

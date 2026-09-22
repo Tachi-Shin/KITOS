@@ -8,8 +8,8 @@
 /* タイマー割込み周期：10ミリ秒 */
 #define TIMER_INTERVAL_MS 10U
 
-/* シェルを含めたタスク数 */
-#define MAX_TASKS       8U
+/* シェルを含めた通常タスク数。内部idleタスクは含まない。 */
+#define MAX_TASKS        8U
 #define TASK_STACK_SIZE (32U * 1024U)
 
 #define TASK_UNUSED     0
@@ -18,5 +18,6 @@
 #define TASK_BLOCKED    3
 #define TASK_EXITED     4
 #define TASK_STOPPED    5
+#define TASK_SLEEPING   6
 
 #endif
