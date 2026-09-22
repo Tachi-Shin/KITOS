@@ -100,7 +100,8 @@ C_SRCS += \
 	usr/bin/basic.c \
 	usr/bin/editor.c \
 	usr/lib/apps_common.c \
-	usr/lib/apps_runtime.c
+	usr/lib/apps_runtime.c \
+	usr/lib/terminal.c
 S_SRCS := $(shell find $(SOURCE_DIRS) -type f -name '*.S' 2>/dev/null)
 
 C_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.c.o,$(C_SRCS))

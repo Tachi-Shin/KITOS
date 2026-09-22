@@ -4,6 +4,15 @@
 static struct fat32_fs *volume;
 static char working_directory[APP_PATH_CAP] = "/";
 
+/* ここから追加 */
+const char *apps_fs_cwd(void)
+{
+    return working_directory;
+}
+/* ここまで追加 */
+
+/* この下のapps_fs_bind()以降は既存のまま */
+
 int apps_fs_bind(struct fat32_fs *fs)
 {
     if (!fs || !fs->mounted) return -1;
