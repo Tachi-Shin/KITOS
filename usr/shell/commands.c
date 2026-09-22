@@ -134,6 +134,11 @@ static void show_tasks(void)
     for (unsigned int i = 0U; i < count; i++) {
         struct task_info *t = &tasks[i];
 
+        /* 終了済みのタスクは表示しない。 */
+        if (t->state == TASK_EXITED) {
+            continue;
+        }
+
         shell_color(t->color);
 
         printk(
