@@ -213,12 +213,22 @@ static void run_app(const char *name)
     } apps[] = {
         {
             "demo_a",
-            "demo_a is running",
+            "(A_A)",
             demo_task
         },
         {
             "demo_b",
-            "demo_b is running",
+            "(B_B)",
+            demo_task
+        },
+        {
+            "demo_c",
+            "(C_C)",
+            demo_task
+        },
+        {
+            "demo_d",
+            "(D_D)",
             demo_task
         },
         {

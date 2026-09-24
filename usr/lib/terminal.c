@@ -150,25 +150,9 @@ void terminal_task_message(
 )
 {
     struct terminal_output out;
-    char digits[10];
-    unsigned int n = 0U;
-    uint32_t id = message->id;
 
     terminal_output_init(&out, console, false);
     terminal_set_color(console, message->color);
-
-    output_text(&out, "[task ");
-
-    do {
-        digits[n++] = (char)('0' + id % 10U);
-        id /= 10U;
-    } while (id);
-
-    while (n) {
-        terminal_output_putc(&out, digits[--n]);
-    }
-
-    output_text(&out, "] ");
 
     for (
         unsigned int i = 0U;
