@@ -218,17 +218,17 @@ static void run_app(const char *name)
         },
         {
             "demo_b",
-            "(B_B)",
+            "\x09(B_B)",
             demo_task
         },
         {
             "demo_c",
-            "(C_C)",
+            "\x09\x09(C_C)",
             demo_task
         },
         {
             "demo_d",
-            "(D_D)",
+            "\x09\x09\x09(D_D)",
             demo_task
         },
         {
