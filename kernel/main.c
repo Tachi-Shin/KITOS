@@ -3,6 +3,7 @@
 
 #include <block/block.h>
 #include <drivers/uart/uart.h>
+#include <drivers/gpio/bcm2711/bcm2711_gpio.h>
 #include <fs/fat32.h>
 
 #include <arch/arm64/kernel/exception.h>
@@ -117,6 +118,10 @@ static bool kernel_init(void)
     }
 
     if (uart_init(console) != 0) {
+        return false;
+    }
+
+    if (gpio_init(&bcm2711_gpio_device) != 0){
         return false;
     }
 
