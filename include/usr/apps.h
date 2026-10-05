@@ -91,6 +91,13 @@ struct editor_context {
 };
 void editor_task(void *argument);
 
+/* commandはコマンド名gpioを除いた引数。終了通知まで有効な領域に置く。 */
+struct gpio_context {
+    struct app_io *io;
+    char command[APP_LINE_CAP];
+};
+void gpio_task(void *argument);
+
 /* Demonstration storage. Volatile across reboot; external serialization required
    if multiple tasks access the SAME ramfs concurrently. */
 struct ramfs_file { unsigned used; char path[APP_PATH_CAP]; size_t len; char data[APP_FILE_CAP]; };
@@ -100,7 +107,7 @@ int ramfs_write(void *fs, const char *path, const char *src, size_t len);
 
 /* OS connection: a single foreground shell owns this console. */
 struct uart_device;
-enum app_program { APP_PROGRAM_BASIC, APP_PROGRAM_EDITOR };
+enum app_program { APP_PROGRAM_BASIC, APP_PROGRAM_EDITOR, APP_PROGRAM_GPIO };
 int apps_run_foreground(struct uart_device *console, enum app_program program);
 int apps_shell_command(struct uart_device *console, const char *line);
 /* Use in the shell instead of uart_try_getc to retain queued typeahead. */

@@ -13,6 +13,7 @@
 /* 大きな状態はタスクスタックではなく.bssに置く。 */
 static struct basic_context basic;
 static struct editor_context editor;
+static struct gpio_context gpio;
 
 static struct {
     struct uart_device *console;
@@ -282,9 +283,10 @@ int apps_console_try_getc(
     return 0;
 }
 
-int apps_run_foreground(
+static int run_foreground(
     struct uart_device *console,
-    enum app_program program
+    enum app_program program,
+    const char *arguments
 )
 {
     int id;
@@ -295,9 +297,21 @@ int apps_run_foreground(
 
     if (
         program != APP_PROGRAM_BASIC &&
-        program != APP_PROGRAM_EDITOR
+        program != APP_PROGRAM_EDITOR &&
+        program != APP_PROGRAM_GPIO
     ) {
         return -1;
+    }
+
+    if (program == APP_PROGRAM_GPIO) {
+        const char *command = arguments ? arguments : "";
+
+        if (app_strlen(command) >= sizeof(gpio.command)) {
+            return -1;
+        }
+
+        /* シェルの入力バッファをタスクから直接参照しない。 */
+        app_copy(gpio.command, command);
     }
 
     if (terminal.console != console) {
@@ -312,7 +326,7 @@ int apps_run_foreground(
     terminal.closed = 0;
 
     /*
-     * BASIC：通常出力。行頭にTABを追加する。
+     * BASIC/GPIO：通常出力。行頭にTABを追加する。
      * エディタ：raw出力。画面制御を加工しない。
      */
     terminal_output_init(
@@ -358,13 +372,21 @@ int apps_run_foreground(
             basic_task,
             &basic
         );
-    } else {
+    } else if (program == APP_PROGRAM_EDITOR) {
         editor.io = &terminal.io;
 
         id = task_create(
             "editor",
             editor_task,
             &editor
+        );
+    } else {
+        gpio.io = &terminal.io;
+
+        id = task_create(
+            "gpio",
+            gpio_task,
+            &gpio
         );
     }
 
@@ -389,6 +411,15 @@ int apps_run_foreground(
     return id;
 }
 
+/* 既存のBASIC/エディタからの呼び出しとの互換性を維持する。 */
+int apps_run_foreground(
+    struct uart_device *console,
+    enum app_program program
+)
+{
+    return run_foreground(console, program, NULL);
+}
+
 /*
  * 処理した場合は1。
  * 既存のシェルへ処理を渡す場合は0。
@@ -400,6 +431,7 @@ int apps_shell_command(
 {
     enum app_program program;
     const char *p = line;
+    const char *arguments = NULL;
 
     if (!console || !line) {
         return 0;
@@ -418,15 +450,18 @@ int apps_shell_command(
         app_keyword(&p, "EDITOR")
     ) {
         program = APP_PROGRAM_EDITOR;
+    } else if (app_keyword(&p, "GPIO")) {
+        program = APP_PROGRAM_GPIO;
+        arguments = p;
     } else {
         return 0;
     }
 
-    if (!app_end(p)) {
+    if (program != APP_PROGRAM_GPIO && !app_end(p)) {
         return 0;
     }
 
-    if (apps_run_foreground(console, program) < 0) {
+    if (run_foreground(console, program, arguments) < 0) {
         const char *message = "Cannot start application\r\n";
 
         while (*message) {

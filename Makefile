@@ -99,6 +99,7 @@ C_SRCS += usr/lib/fs_commands.c
 C_SRCS += \
 	usr/bin/basic.c \
 	usr/bin/editor.c \
+	usr/bin/gpio.c \
 	usr/lib/apps_common.c \
 	usr/lib/apps_runtime.c \
 	usr/lib/terminal.c
