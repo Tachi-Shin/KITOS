@@ -1,9 +1,125 @@
 #include <usr/apps.h>
+#include <dos/config.h>
+#include <drivers/gpio/gpio.h>
+#include <kernel/timer.h>
+#include <stdatomic.h>
 
 #define EXPR_DEPTH 16u
+
+/* kernel_timer_get_ticks() と同じタイマー周期で秒へ換算する。 */
+#if defined(TIMER_INTERVAL_MS)
+#if TIMER_INTERVAL_MS <= 0
+#error "TIMER_INTERVAL_MS must be positive"
+#endif
+#define BASIC_TICK_MS ((uint64_t)TIMER_INTERVAL_MS)
+#elif defined(TIMER_INTERVAL_SECONDS)
+#if TIMER_INTERVAL_SECONDS <= 0
+#error "TIMER_INTERVAL_SECONDS must be positive"
+#endif
+#define BASIC_TICK_MS ((uint64_t)TIMER_INTERVAL_SECONDS * 1000ULL)
+#else
+#error "Define TIMER_INTERVAL_MS in dos/config.h to match the kernel timer"
+#endif
+
 struct parser { const char *p; struct basic_context *ctx; const char *error; unsigned depth; };
 static int64_t expression(struct parser *p);
+static int32_t value(struct parser *p);
+static int expect(struct parser *p, char c);
 static void fail(struct parser *p, const char *s) { if (!p->error) p->error = s; }
+
+/* 括弧やカンマの直前でもキーワードを認識する。失敗時は位置を変えない。 */
+static int basic_word(const char **cursor, const char *word) {
+    const char *q = *cursor;
+    app_space(&q);
+    while (*word) {
+        char c = *q;
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        if (c != *word++) return 0;
+        ++q;
+    }
+    if ((*q >= 'A' && *q <= 'Z') || (*q >= 'a' && *q <= 'z') ||
+        (*q >= '0' && *q <= '9') || *q == '_' || *q == '$') return 0;
+    *cursor = q;
+    return 1;
+}
+
+static void gpio_failure(struct parser *p, int result) {
+    switch (result) {
+    case GPIO_EINVAL: fail(p, "Invalid GPIO pin or value"); break;
+    case GPIO_ENODEV: fail(p, "GPIO is not initialized"); break;
+    case GPIO_EMODE: fail(p, "GPIO pin mode mismatch"); break;
+    default: fail(p, "GPIO operation failed"); break;
+    }
+}
+
+/*
+ * 現在の単一フォアグラウンドBASIC用。
+ * タスクが途中で終了してもイベントとコールバック引数が失効しないよう、
+ * イベントと完了フラグはスタックではなく静的領域に置く。
+ */
+static struct timer_event basic_sleep_event;
+static atomic_uint basic_sleep_done;
+
+/* IRQ禁止状態で呼ばれる。待機・入出力・コンテキスト切替は行わない。 */
+static void basic_sleep_finished(void *argument) {
+    (void)argument;
+    atomic_store_explicit(&basic_sleep_done, 1U, memory_order_release);
+}
+
+/* 0: 完了、1: 登録失敗、2: Ctrl+C。時間判定はタイマーイベントに任せる。 */
+static int basic_sleep_ms(struct app_io *io, uint32_t milliseconds) {
+    /* 前回のタスクが強制終了された場合も、古いイベントを解除して再利用する。 */
+    (void)kernel_timer_cancel(&basic_sleep_event);
+    if (milliseconds == 0U) return 0;
+
+    atomic_store_explicit(&basic_sleep_done, 0U, memory_order_relaxed);
+    if (kernel_timer_arm(&basic_sleep_event, milliseconds,
+                         basic_sleep_finished, NULL) != 0) {
+        (void)kernel_timer_cancel(&basic_sleep_event);
+        return 1;
+    }
+
+    while (!atomic_load_explicit(&basic_sleep_done, memory_order_acquire)) {
+        if (io->cancelled && io->cancelled(io->user)) {
+            (void)kernel_timer_cancel(&basic_sleep_event);
+            return 2;
+        }
+        io->yield(io->user);
+    }
+
+    (void)kernel_timer_cancel(&basic_sleep_event);
+    return 0;
+}
+
+/*
+ * TIME$ は読み取り専用の起動後経過時間。RTCの現在時刻ではない。
+ * 時間は最低2桁で、24時間を超えても0へ戻さない。
+ * 1回の取得値からすべての桁を作り、秒の繰り上がりによる混在を防ぐ。
+ */
+static void basic_print_time(struct app_io *io) {
+    uint64_t ticks = kernel_timer_get_ticks();
+    uint64_t seconds = (ticks / 1000ULL) * BASIC_TICK_MS
+                     + ((ticks % 1000ULL) * BASIC_TICK_MS) / 1000ULL;
+    uint64_t hours = seconds / 3600ULL;
+    unsigned int minutes = (unsigned int)((seconds / 60ULL) % 60ULL);
+    unsigned int remainder = (unsigned int)(seconds % 60ULL);
+    char digits[20];
+    size_t count = 0;
+
+    do {
+        digits[count++] = (char)('0' + hours % 10ULL);
+        hours /= 10ULL;
+    } while (hours != 0ULL);
+    if (count < 2U) io->putc(io->user, '0');
+    while (count != 0U) io->putc(io->user, digits[--count]);
+    io->putc(io->user, ':');
+    io->putc(io->user, (char)('0' + minutes / 10U));
+    io->putc(io->user, (char)('0' + minutes % 10U));
+    io->putc(io->user, ':');
+    io->putc(io->user, (char)('0' + remainder / 10U));
+    io->putc(io->user, (char)('0' + remainder % 10U));
+}
+
 static int64_t checked(struct parser *p, int64_t v) {
     if (v < INT32_MIN || v > INT32_MAX) { fail(p, "Integer overflow"); return 0; } return v;
 }
@@ -28,6 +144,30 @@ static int64_t primary(struct parser *p) {
         /* Permit magnitude 2147483648 only so unary minus can form INT32_MIN. */
         if (!app_uint(&p->p, &n, UINT32_C(2147483648))) fail(p, "Integer overflow");
         else v = n;
+    } else if (basic_word(&p->p, "GPIOREAD") || basic_word(&p->p, "GPIO_READ")) {
+        int32_t pin = 0;
+        if (expect(p, '(')) {
+            pin = value(p);
+            (void)expect(p, ')');
+        }
+        if (!p->error) {
+            if (pin < 0) fail(p, "Invalid GPIO pin");
+            else {
+                int result = gpio_read((unsigned int)pin);
+                if (result != LOW && result != HIGH) gpio_failure(p, result);
+                else v = result;
+            }
+        }
+    } else if (basic_word(&p->p, "HIGH")) {
+        v = HIGH;
+    } else if (basic_word(&p->p, "LOW")) {
+        v = LOW;
+    } else if (basic_word(&p->p, "INPUT") || basic_word(&p->p, "IN")) {
+        v = INPUT;
+    } else if (basic_word(&p->p, "OUTPUT") || basic_word(&p->p, "OUT")) {
+        v = OUTPUT;
+    } else if (basic_word(&p->p, "TIME$")) {
+        fail(p, "TIME$ is a string; use PRINT TIME$");
     } else if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) {
         v = p->ctx->vars[variable(p)];
     } else fail(p, "Expected expression");
@@ -95,7 +235,40 @@ static int statement(struct basic_context *ctx, const char *text, size_t *next, 
     const char *start; int32_t v; int idx;
     app_space(&p.p); start = p.p;
     if (!*p.p || app_keyword(&p.p, "REM") || *p.p == '\'') return 0;
-    if (app_keyword(&p.p, "PRINT")) {
+    if (basic_word(&p.p, "SLEEP")) {
+        int rc;
+        v = value(&p);
+        (void)basic_word(&p.p, "MS");
+        end_statement(&p);
+        if (v < 0) fail(&p, "SLEEP requires nonnegative milliseconds");
+        if (!p.error) {
+            rc = basic_sleep_ms(io, (uint32_t)v);
+            if (rc == 2) return 2;
+            if (rc != 0) fail(&p, "Cannot register sleep timer event");
+        }
+    } else if (basic_word(&p.p, "PINMODE") || basic_word(&p.p, "GPIO_PINMODE")) {
+        int32_t pin = value(&p), mode;
+        (void)expect(&p, ',');
+        mode = value(&p);
+        end_statement(&p);
+        if (pin < 0) fail(&p, "Invalid GPIO pin");
+        if (mode != INPUT && mode != OUTPUT) fail(&p, "Expected INPUT or OUTPUT");
+        if (!p.error) {
+            int result = gpio_pinMode((unsigned int)pin, (enum gpio_mode)mode);
+            if (result != GPIO_OK) gpio_failure(&p, result);
+        }
+    } else if (basic_word(&p.p, "GPIOWRITE") || basic_word(&p.p, "GPIO_WRITE")) {
+        int32_t pin = value(&p), level;
+        (void)expect(&p, ',');
+        level = value(&p);
+        end_statement(&p);
+        if (pin < 0) fail(&p, "Invalid GPIO pin");
+        if (level != LOW && level != HIGH) fail(&p, "Expected LOW or HIGH");
+        if (!p.error) {
+            int result = gpio_write((unsigned int)pin, (enum gpio_level)level);
+            if (result != GPIO_OK) gpio_failure(&p, result);
+        }
+    } else if (app_keyword(&p.p, "PRINT")) {
         int newline = 1;
         while (!p.error && !app_end(p.p)) {
             app_space(&p.p);
@@ -105,6 +278,12 @@ static int statement(struct basic_context *ctx, const char *text, size_t *next, 
                 if (*p.p != '"') { fail(&p, "Unterminated string"); break; }
                 while (begin < p.p) io->putc(io->user, *begin++);
                 ++p.p;
+            } else if (basic_word(&p.p, "TIME$")) {
+                const char *tail = p.p;
+                app_space(&tail);
+                if (*tail != ';' && *tail != ',' && !app_end(tail))
+                    fail(&p, "Expected ; or , after TIME$");
+                else basic_print_time(io);
             } else { v = value(&p); if (!p.error) app_number(io, v); }
             app_space(&p.p); newline = 1;
             if (*p.p == ';' || *p.p == ',') {
@@ -271,6 +450,12 @@ void basic_task(void *argument) {
                 "LET A=expr, A=expr, PRINT \"text\";expr, INPUT A\n"
                 "IF expr <|<=|=|<>|>=|> expr THEN line\n"
                 "GOTO line, GOSUB line, RETURN, REM, END, STOP\n"
+                "SLEEP milliseconds[MS] (0 = no wait; Ctrl+C cancels)\n"
+                "PRINT TIME$ (uptime HH:MM:SS; hours do not wrap at 24)\n"
+                "PINMODE pin, INPUT|OUTPUT (IN/OUT or 0/1 also accepted)\n"
+                "GPIOWRITE pin, LOW|HIGH (0/1 also accepted)\n"
+                "A=GPIOREAD(pin), PRINT GPIOREAD(pin) (returns 0 or 1)\n"
+                "Aliases: GPIO_PINMODE, GPIO_WRITE, GPIO_READ(pin)\n"
                 "Operators: + - * / % ( ); signed 32-bit; one statement/line\n");
         } else (void)statement(ctx,ctx->command,&next,0);
     }
