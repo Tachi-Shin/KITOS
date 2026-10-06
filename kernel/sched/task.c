@@ -4,6 +4,32 @@
 
 static struct task task_table[MAX_TASKS];
 
+extern char __demo_a_stack_start[];
+extern char __demo_a_stack_end[];
+extern char __demo_b_stack_start[];
+extern char __demo_b_stack_end[];
+extern char __demo_c_stack_start[];
+extern char __demo_c_stack_end[];
+extern char __demo_d_stack_start[];
+extern char __demo_d_stack_end[];
+extern char __basic_stack_start[];
+extern char __basic_stack_end[];
+extern char __editor_stack_start[];
+extern char __editor_stack_end[];
+extern char __gpio_stack_start[];
+extern char __gpio_stack_end[];
+extern char __shell_stack_start[];
+extern char __shell_stack_end[];
+
+extern void demo_a_task(void *argument);
+extern void demo_b_task(void *argument);
+extern void demo_c_task(void *argument);
+extern void demo_d_task(void *argument);
+extern void basic_task(void *argument);
+extern void editor_task(void *argument);
+extern void gpio_task(void *argument);
+extern void shell_task(void *argument);
+
 static uint8_t task_stacks[MAX_TASKS][TASK_STACK_SIZE]
     __attribute__((aligned(16)));
 
@@ -243,8 +269,35 @@ int task_create(
         task->protected = false;
         task->work = 0U;
 
-        task->stack_bottom = &task_stacks[i][0];
-        task->stack_top = &task_stacks[i][TASK_STACK_SIZE];
+        if (entry == demo_a_task) {
+            task->stack_bottom = __demo_a_stack_start;
+            task->stack_top = __demo_a_stack_end;
+        } else if (entry == demo_b_task) {
+            task->stack_bottom = __demo_b_stack_start;
+            task->stack_top = __demo_b_stack_end;
+        } else if (entry == demo_c_task) {
+            task->stack_bottom = __demo_c_stack_start;
+            task->stack_top = __demo_c_stack_end;
+        } else if (entry == demo_d_task) {
+            task->stack_bottom = __demo_d_stack_start;
+            task->stack_top = __demo_d_stack_end;
+        } else if (entry == basic_task) {
+            task->stack_bottom = __basic_stack_start;
+            task->stack_top = __basic_stack_end;
+        } else if (entry == editor_task) {
+            task->stack_bottom = __editor_stack_start;
+            task->stack_top = __editor_stack_end;
+        } else if (entry == gpio_task) {
+            task->stack_bottom = __gpio_stack_start;
+            task->stack_top = __gpio_stack_end;
+        } else if (entry == shell_task) {
+            task->stack_bottom = __shell_stack_start;
+            task->stack_top = __shell_stack_end;
+        } else {
+            /* demo_sleep など、専用領域を持たないタスク */
+            task->stack_bottom = &task_stacks[i][0];
+            task->stack_top = &task_stacks[i][TASK_STACK_SIZE];
+        }
 
         /*
          * 再利用する枠に古いタイマーを残さない。

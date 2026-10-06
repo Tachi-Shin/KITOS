@@ -94,7 +94,10 @@ LDFLAGS := \
 # Source discovery
 # --------------------------------------------------------------
 C_SRCS := $(shell find $(SOURCE_DIRS) -type f -name '*.c' 2>/dev/null)
-C_SRCS += usr/bin/demo.c
+C_SRCS += usr/bin/demo_a.c
+C_SRCS += usr/bin/demo_b.c
+C_SRCS += usr/bin/demo_c.c
+C_SRCS += usr/bin/demo_d.c
 C_SRCS += usr/lib/fs_commands.c
 C_SRCS += \
 	usr/bin/basic.c \

@@ -5,7 +5,7 @@
 
 #include <usr/shell.h>
 
-void demo_task(void *argument)
+void demo_c_task(void *argument)
 {
     const char *message = argument;
 

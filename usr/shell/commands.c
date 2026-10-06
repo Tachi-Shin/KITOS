@@ -214,22 +214,22 @@ static void run_app(const char *name)
         {
             "demo_a",
             "(A_A)",
-            demo_task
+            demo_a_task
         },
         {
             "demo_b",
             "\x09(B_B)",
-            demo_task
+            demo_b_task
         },
         {
             "demo_c",
             "\x09\x09(C_C)",
-            demo_task
+            demo_c_task
         },
         {
             "demo_d",
             "\x09\x09\x09(D_D)",
-            demo_task
+            demo_d_task
         },
         {
             "demo_sleep",
