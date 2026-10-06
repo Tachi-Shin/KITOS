@@ -20,6 +20,44 @@ static const char *const color_names[TASK_COLOR_COUNT] = {
     "white"
 };
 
+static void print_spaces(unsigned int count)
+{
+    while (count-- > 0U) {
+        printk(" ");
+    }
+}
+
+static unsigned int text_length(const char *s)
+{
+    unsigned int n = 0U;
+
+    while (s[n] != '\0') {
+        n++;
+    }
+
+    return n;
+}
+
+static void print_column(const char *s, unsigned int width)
+{
+    unsigned int length = text_length(s);
+
+    printk("%s", s);
+    print_spaces(length < width ? width - length : 1U);
+}
+
+static unsigned int decimal_digits(uint64_t value)
+{
+    unsigned int n = 1U;
+
+    while (value >= 10U) {
+        value /= 10U;
+        n++;
+    }
+
+    return n;
+}
+
 static bool equal(const char *a, const char *b)
 {
     while (*a != '\0' && *a == *b) {
@@ -125,44 +163,42 @@ static const char *state_name(uint32_t state)
 static void show_tasks(void)
 {
     struct task_info tasks[MAX_TASKS];
+    unsigned int count = task_snapshot(tasks, MAX_TASKS);
 
-    unsigned int count =
-        task_snapshot(tasks, MAX_TASKS);
-
-    printk("ID NAME STATE WORK COLOR\n");
+    printk("ID  NAME      STATE     WORK         COLOR     STACK_AREA                    SIZE\n");
 
     for (unsigned int i = 0U; i < count; i++) {
         struct task_info *t = &tasks[i];
 
-        /* 終了済みのタスクは表示しない。 */
         if (t->state == TASK_EXITED) {
             continue;
         }
 
-        shell_color(t->color);
-
-        printk(
-            "%u %s %s %llu %s\n",
-            t->id,
-            t->name,
-            state_name(t->state),
-            (unsigned long long)t->work,
-            color_names[t->color]
-        );
-
-        /*
-         * stack_topは領域の直後。
-         * 表示するSIZEは確保容量であり、現在の使用量ではない。
-         */
-        printk(
-            "  STACK [%p, %p) SIZE=%lu bytes\n",
-            t->stack_bottom,
-            t->stack_top,
+        unsigned long stack_size =
             (unsigned long)(
                 (uintptr_t)t->stack_top -
                 (uintptr_t)t->stack_bottom
-            )
-        );
+            );
+
+        shell_color(t->color);
+
+        printk("%u", t->id);
+        print_spaces(decimal_digits(t->id) < 4U
+            ? 4U - decimal_digits(t->id) : 1U);
+
+        print_column(t->name, 10U);
+        print_column(state_name(t->state), 10U);
+
+        printk("%llu", (unsigned long long)t->work);
+        print_spaces(decimal_digits(t->work) < 13U
+            ? 13U - decimal_digits(t->work) : 1U);
+
+        print_column(color_names[t->color], 10U);
+
+        printk("[%p <- %p] %lu bytes\n",
+               t->stack_bottom,
+               t->stack_top,
+               stack_size);
     }
 
     shell_color(0U);
