@@ -148,17 +148,17 @@ SECTIONS
         __demo_a_bss_end = .;
     }
 
-    .demo_a_stack (NOLOAD) : ALIGN(16) {
-        __demo_a_stack_start = .;
+    . = ALIGN(16);
+    __demo_a_stack_start = .;
 
-        /* DEMO_A用スタックを64 KiB確保 */
-        . += 64K;
+    ASSERT(__demo_a_stack_start < 0x00810000,
+        "demo_a has no stack space")
 
-        __demo_a_stack_end = .;
-    }
+    . = 0x00810000;
+    __demo_a_stack_end = .;
 
     __demo_a_end = .;
-
+    
     /* DEMO_B専用領域 */
     __demo_b_start = .;
 
@@ -185,14 +185,14 @@ SECTIONS
         __demo_b_bss_end = .;
     }
 
-    .demo_b_stack (NOLOAD) : ALIGN(16) {
-        __demo_b_stack_start = .;
+    . = ALIGN(16);
+    __demo_b_stack_start = .;
 
-        /* DEMO_B用スタックを64 KiB確保 */
-        . += 64K;
+    ASSERT(__demo_b_stack_start < 0x00820000,
+        "demo_b has no stack space")
 
-        __demo_b_stack_end = .;
-    }
+    . = 0x00820000;
+    __demo_b_stack_end = .;
 
     __demo_b_end = .;
 
@@ -222,14 +222,14 @@ SECTIONS
         __demo_c_bss_end = .;
     }
 
-    .demo_c_stack (NOLOAD) : ALIGN(16) {
-        __demo_c_stack_start = .;
+    . = ALIGN(16);
+    __demo_c_stack_start = .;
 
-        /* DEMO_C用スタックを64 KiB確保 */
-        . += 64K;
+    ASSERT(__demo_c_stack_start < 0x00830000,
+        "demo_c has no stack space")
 
-        __demo_c_stack_end = .;
-    }
+    . = 0x00830000;
+    __demo_c_stack_end = .;
 
     __demo_c_end = .;
 
@@ -259,14 +259,14 @@ SECTIONS
         __demo_d_bss_end = .;
     }
 
-    .demo_d_stack (NOLOAD) : ALIGN(16) {
-        __demo_d_stack_start = .;
+    . = ALIGN(16);
+    __demo_d_stack_start = .;
 
-        /* DEMO_D用スタックを64 KiB確保 */
-        . += 64K;
+    ASSERT(__demo_d_stack_start < 0x00840000,
+        "demo_d has no stack space")
 
-        __demo_d_stack_end = .;
-    }
+    . = 0x00840000;
+    __demo_d_stack_end = .;
 
     __demo_d_end = .;
 
@@ -296,14 +296,14 @@ SECTIONS
         __basic_bss_end = .;
     }
 
-    .basic_stack (NOLOAD) : ALIGN(16) {
-        __basic_stack_start = .;
+    . = ALIGN(16);
+    __basic_stack_start = .;
 
-        /* BASIC用スタックを64 KiB確保 */
-        . += 64K;
+    ASSERT(__basic_stack_start < 0x00850000,
+        "basic has no stack space")
 
-        __basic_stack_end = .;
-    }
+    . = 0x00850000;
+    __basic_stack_end = .;
 
     __basic_end = .;
 
@@ -333,14 +333,14 @@ SECTIONS
         __editor_bss_end = .;
     }
 
-    .editor_stack (NOLOAD) : ALIGN(16) {
-        __editor_stack_start = .;
+    . = ALIGN(16);
+    __editor_stack_start = .;
 
-        /* EDITOR用スタックを64 KiB確保 */
-        . += 64K;
+    ASSERT(__editor_stack_start < 0x00860000,
+        "editor has no stack space")
 
-        __editor_stack_end = .;
-    }
+    . = 0x00860000;
+    __editor_stack_end = .;
 
     __editor_end = .;
 
@@ -370,14 +370,14 @@ SECTIONS
         __gpio_bss_end = .;
     }
 
-    .gpio_stack (NOLOAD) : ALIGN(16) {
-        __gpio_stack_start = .;
+    . = ALIGN(16);
+    __gpio_stack_start = .;
 
-        /* GPIO用スタックを64 KiB確保 */
-        . += 64K;
+    ASSERT(__gpio_stack_start < 0x00870000,
+        "gpio has no stack space")
 
-        __gpio_stack_end = .;
-    }
+    . = 0x00870000;
+    __gpio_stack_end = .;
 
     __gpio_end = .;
 
@@ -407,14 +407,14 @@ SECTIONS
         __shell_bss_end = .;
     }
 
-    .shell_stack (NOLOAD) : ALIGN(16) {
-        __shell_stack_start = .;
+    . = ALIGN(16);
+    __shell_stack_start = .;
 
-        /* SHELL用スタックを64 KiB確保 */
-        . += 64K;
+    ASSERT(__shell_stack_start < 0x00880000,
+        "shell has no stack space")
 
-        __shell_stack_end = .;
-    }
+    . = 0x00880000;
+    __shell_stack_end = .;
 
     __shell_end = .;
     __user_area_end = .;
